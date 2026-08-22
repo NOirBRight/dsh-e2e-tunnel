@@ -17,6 +17,10 @@ export interface ConnectOptions {
     deviceToken?: string;
     /** Called with the device token when one is issued (first pairing only — store it). */
     onDeviceToken?: (token: string) => void | Promise<void>;
+    /** Called with the Host Display Name from every sealed acknowledgement. */
+    onHostMetadata?: (metadata: {
+        displayName: string;
+    }) => void | Promise<void>;
     /** Called on every state transition. */
     onStateChange?: (state: TunnelState) => void;
     /** Public Endpoint policy; Automatic is the product default. */

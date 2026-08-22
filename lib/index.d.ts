@@ -17,4 +17,5 @@ export type { FrameTransport, DataChannelLike } from './transport.ts';
 export { negotiateDirectChannel, encodeSignal, decodeSignal, TUNNEL_CHANNEL_LABEL } from './signal.ts';
 export type { SdpSignal, SignalingSocket, PeerConnectionLike, NegotiateOptions, NegotiatedChannel } from './signal.ts';
 export { b64urlEncode, b64urlDecode } from './bytes.ts';
+export { compactDisplayName } from './display-name.ts';
 //# sourceMappingURL=index.d.ts.map

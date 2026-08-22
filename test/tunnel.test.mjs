@@ -3,7 +3,7 @@ import { test, before, after } from 'node:test'
 import assert from 'node:assert/strict'
 import { randomBytes } from 'node:crypto'
 import nacl from 'tweetnacl'
-import { connect, parseOffer, TunnelError, TunnelWebSocket } from '../src/index.ts'
+import { compactDisplayName, connect, parseOffer, TunnelError, TunnelWebSocket } from '../src/index.ts'
 import { b64urlEncode, utf8Encode } from '../src/bytes.ts'
 import { startFakeRelay } from './fake-relay.mjs'
 import { startFakeHost } from './fake-host.mjs'
@@ -101,6 +101,13 @@ test('parseOffer accepts a v4 Host-owned Public Endpoint offer', () => {
   assert.equal(o.endpointKind, 'temporary')
   assert.deepEqual(o.capabilities, publicCapabilities)
   assert.deepEqual(o.ice, ['stun:stun.example.com:3478'])
+})
+
+test('Host Display Name is compacted and rejects blank metadata', () => {
+  assert.equal(compactDisplayName('Noirbright Workstation'), 'Noirbright PC')
+  const offer = parseOffer(makePublicOffer({ hostName: 'Noirbright Workstation' }))
+  assert.equal(offer.hostName, 'Noirbright PC')
+  assert.throws(() => parseOffer(makePublicOffer({ hostName: '   ' })), (e) => e.code === 'bad-offer')
 })
 
 test('parseOffer expands compact v4 QR payloads below the previous scanner-safe size', () => {
