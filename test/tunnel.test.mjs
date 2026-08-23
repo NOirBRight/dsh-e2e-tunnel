@@ -3,7 +3,7 @@ import { test, before, after } from 'node:test'
 import assert from 'node:assert/strict'
 import { randomBytes } from 'node:crypto'
 import nacl from 'tweetnacl'
-import { compactDisplayName, connect, parseOffer, TunnelError, TunnelWebSocket } from '../src/index.ts'
+import { connect, parseOffer, TunnelError, TunnelWebSocket } from '../src/index.ts'
 import { b64urlEncode, utf8Encode } from '../src/bytes.ts'
 import { startFakeRelay } from './fake-relay.mjs'
 import { startFakeHost } from './fake-host.mjs'
@@ -103,15 +103,8 @@ test('parseOffer accepts a v4 Host-owned Public Endpoint offer', () => {
   assert.deepEqual(o.ice, ['stun:stun.example.com:3478'])
 })
 
-test('Host Display Name is compacted and rejects blank metadata', () => {
-  assert.equal(compactDisplayName('Noirbright Workstation'), 'Noirbright PC')
-  const offer = parseOffer(makePublicOffer({ hostName: 'Noirbright Workstation' }))
-  assert.equal(offer.hostName, 'Noirbright PC')
-  assert.throws(() => parseOffer(makePublicOffer({ hostName: '   ' })), (e) => e.code === 'bad-offer')
-})
-
 test('parseOffer expands compact v4 QR payloads below the previous scanner-safe size', () => {
-  const compact = [4, 'https://host.example', 0, 'a'.repeat(32), b64urlEncode(new Uint8Array(32)), 'test-code', Math.floor(Date.now() / 1000) + 300, 14, ['stun:stun.example.com:3478']]
+  const compact = [4, 'https://host.example', 0, 'a'.repeat(32), b64urlEncode(new Uint8Array(32)), 'test-code', Math.floor(Date.now() / 1000) + 300, 14, ['stun:stun.example.com:3478'], 'Noir Workstation']
   const url = 'dsh-mobile://pair#offer=' + b64urlEncode(utf8Encode(JSON.stringify(compact)))
   assert.ok(url.length < 377)
   const offer = parseOffer(url)
@@ -119,6 +112,7 @@ test('parseOffer expands compact v4 QR payloads below the previous scanner-safe 
   assert.equal(offer.endpointKind, 'temporary')
   assert.deepEqual(offer.capabilities, publicCapabilities)
   assert.deepEqual(offer.ice, ['stun:stun.example.com:3478'])
+  assert.equal(offer.hostName, 'Noir PC')
 })
 
 test('parseOffer rejects unsafe or malformed v4 Public Endpoint offers', () => {

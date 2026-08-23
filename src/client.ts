@@ -1,6 +1,6 @@
 import nacl from 'tweetnacl'
 import { b64urlDecode, concat, utf8Decode, utf8Encode } from './bytes.ts'
-import { TunnelError } from './errors.ts'
+import { DEFAULT_MAX_HTTP_BODY_BYTES, TunnelError } from './errors.ts'
 import { compactDisplayName } from './display-name.ts'
 import { parseOffer, type Offer, type RelayOffer, type DirectOffer, type PublicEndpointOffer } from './offer.ts'
 import type { ConnectionPolicy } from './connection-policy.ts'
@@ -30,7 +30,7 @@ export interface ConnectOptions {
   deviceToken?: string
   /** Called with the device token when one is issued (first pairing only — store it). */
   onDeviceToken?: (token: string) => void | Promise<void>
-  /** Called with the Host Display Name from every sealed acknowledgement. */
+  /** Called after every sealed acknowledgement carrying mutable Host presentation metadata. */
   onHostMetadata?: (metadata: { displayName: string }) => void | Promise<void>
   /** Called on every state transition. */
   onStateChange?: (state: TunnelState) => void
@@ -60,7 +60,7 @@ export interface TunnelClient {
   fetch(path: string, init?: {
     method?: string
     headers?: HeadersInit
-    body?: string | ArrayBuffer | Uint8Array | Blob | URLSearchParams | null
+    body?: string | ArrayBuffer | Uint8Array | Blob | URLSearchParams | ReadableStream<Uint8Array> | null
     signal?: AbortSignal | null
   }): Promise<Response>
   /** Open a tunneled WebSocket to a loopback path (e.g. /api/events.mux). */
@@ -69,6 +69,8 @@ export interface TunnelClient {
   probe(timeoutMs?: number): Promise<void>
   /** The device token this session runs on (permanent until revoked, protocol §5). */
   readonly deviceToken: string | null
+  /** Negotiated HTTP body cap; Host advertises, client defaults to 8 MiB. */
+  readonly maxHttpBodyBytes: number
   readonly state: TunnelState
   close(): void
   /** Close without emitting onStateChange. Used when this session lost the Automatic race. */
@@ -189,12 +191,15 @@ async function attemptPublicDirect(offer: PublicEndpointOffer, hostPub: Uint8Arr
 }
 
 async function attemptConnect(offer: RelayOffer, hostPub: Uint8Array, options: ConnectOptions): Promise<TunnelClient> {
+  options.onConnectionStatus?.({ phase: 'tunnel-connecting', route: 'tunnel' })
   const ws = new WebSocket(offer.addr + '/r/' + offer.room + '?role=client')
   ws.binaryType = 'arraybuffer'
   const transport = new WsFrameTransport(ws)
   try {
     await onceOpen(ws)
-    return await openSession(transport, hostPub, { ...options, code: offer.code })
+    const client = await openSession(transport, hostPub, { ...options, code: offer.code })
+    options.onConnectionStatus?.({ phase: 'tunnel-open', route: 'tunnel' })
+    return client
   } catch (error) {
     // A rejected/failed attempt must release the room seat (one client per
     // room); the host stays seated and never closes on a bad hello.
@@ -278,7 +283,7 @@ export async function openSession(transport: FrameTransport, hostPub: Uint8Array
   if (typeof first === 'string') throw new TunnelError('handshake', 'unexpected text frame from host')
   const ackBytes = unseal(first, hostPub, keys.secretKey)
   if (ackBytes === null) throw new TunnelError('handshake', 'could not unseal host ack')
-  const ack = JSON.parse(utf8Decode(ackBytes)) as { ok?: boolean; deviceToken?: string; hostName?: unknown }
+  const ack = JSON.parse(utf8Decode(ackBytes)) as { ok?: boolean; deviceToken?: string; hostName?: unknown; maxHttpBodyBytes?: unknown }
   // Code path: the ack must carry a freshly issued token; reconnect path: the presented bearer token persists.
   const deviceToken = typeof ack.deviceToken === 'string' ? ack.deviceToken : (options.deviceToken ?? null)
   if (ack.ok !== true || deviceToken === null) {
@@ -289,12 +294,19 @@ export async function openSession(transport: FrameTransport, hostPub: Uint8Array
     const displayName = ack.hostName.replace(/[\u0000-\u001f\u007f]/g, '').trim()
     if (displayName !== '') await options.onHostMetadata?.({ displayName: compactDisplayName(displayName, 'Host') })
   }
-  return new TunnelSession(transport, hostPub, keys.secretKey, deviceToken, options)
+  return new TunnelSession(transport, hostPub, keys.secretKey, deviceToken, options, advertisedHttpBodyLimit(ack.maxHttpBodyBytes))
+}
+
+function advertisedHttpBodyLimit(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0
+    ? Math.floor(value)
+    : DEFAULT_MAX_HTTP_BODY_BYTES
 }
 
 /** Session implementation; socket.ts and http.ts ride its demux maps. */
 export class TunnelSession implements TunnelClient {
   readonly deviceToken: string | null
+  readonly maxHttpBodyBytes: number
   private currentState: TunnelState = 'open'
   private sendSeq = 0
   private recvSeq = 0
@@ -314,12 +326,14 @@ export class TunnelSession implements TunnelClient {
     ownSec: Uint8Array,
     deviceToken: string,
     options: ConnectOptions,
+    maxHttpBodyBytes = DEFAULT_MAX_HTTP_BODY_BYTES,
   ) {
     this.transport = transport
     this.hostPub = hostPub
     this.ownSec = ownSec
     this.options = options
     this.deviceToken = deviceToken
+    this.maxHttpBodyBytes = maxHttpBodyBytes
     // The transport owns ordered delivery (its normalization queue), so the
     // session handler is synchronous from here on.
     transport.onFrame((frame) => this.onFrame(frame))
@@ -428,7 +442,7 @@ export class TunnelSession implements TunnelClient {
     switch (message.t) {
       case 'http-res': {
         const pending = id === undefined ? undefined : this.fetches.get(id)
-        pending?.onHead(message.status as number, message.headers as Record<string, string>, message.body as string | undefined)
+        pending?.onHead(message.status as number, message.headers as Record<string, string>, message.body as string | undefined, message.encoding as string | undefined)
         return
       }
       case 'http-data': {

@@ -1,8 +1,14 @@
 import { TunnelError } from './errors.ts';
 import type { TunnelSession } from './client.ts';
+export type TunnelFetchInit = {
+    method?: string;
+    headers?: HeadersInit;
+    body?: string | ArrayBuffer | Uint8Array | Blob | URLSearchParams | ReadableStream<Uint8Array> | null;
+    signal?: AbortSignal | null;
+};
 /** Pending demux entry for one in-flight tunneled request. */
 export interface PendingFetch {
-    onHead(status: number, headers: Record<string, string>, bodyB64: string | undefined): void;
+    onHead(status: number, headers: Record<string, string>, bodyB64: string | undefined, encoding: string | undefined): void;
     onData(dataB64: string, last: boolean): void;
     onAbort(error: TunnelError): void;
 }
@@ -20,10 +26,5 @@ export interface PendingFetch {
  * @param init subset of RequestInit: method/headers/body/signal.
  * @returns a real Response assembled from the response frames.
  */
-export declare function tunnelFetch(session: TunnelSession, path: string, init?: {
-    method?: string;
-    headers?: HeadersInit;
-    body?: string | ArrayBuffer | Uint8Array | Blob | URLSearchParams | null;
-    signal?: AbortSignal | null;
-}): Promise<Response>;
+export declare function tunnelFetch(session: TunnelSession, path: string, init?: TunnelFetchInit): Promise<Response>;
 //# sourceMappingURL=http.d.ts.map

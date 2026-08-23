@@ -14,7 +14,7 @@ interface OfferBase {
   code: string
   /** Expiry, unix seconds. */
   exp: number
-  /** Human-facing Host display name; never identity, endpoint, or Room. */
+  /** Human-facing Host name; presentation metadata, never endpoint or Room identity. */
   hostName?: string
 }
 
@@ -57,7 +57,7 @@ export interface PublicEndpointOffer {
   code: string
   exp: number
   capabilities: PublicEndpointCapabilities
-  /** Human-facing Host display name available immediately after scanning. */
+  /** Human-facing Host name available immediately after scanning. */
   hostName?: string
   /** STUN-only ICE discovery; Tunnel Fallback is the non-direct path. */
   ice?: string[]
@@ -98,6 +98,7 @@ export function parseOffer(offerUrl: string, options: ParseOfferOptions = {}): O
     const mask = typeof capabilityMask === 'number' && Number.isInteger(capabilityMask) && capabilityMask >= 0 && capabilityMask <= 15
       ? capabilityMask
       : null
+    const compactIce = ice === null ? undefined : ice
     parsed = {
       v: version, mode: 'public', protocol: 1, endpoint,
       endpointKind: kind === 0 ? 'temporary' : kind === 1 ? 'custom' : undefined,
@@ -106,7 +107,7 @@ export function parseOffer(offerUrl: string, options: ParseOfferOptions = {}): O
         browser: (mask & 1) !== 0, direct: (mask & 2) !== 0,
         tunnel: (mask & 4) !== 0, endpointRefresh: (mask & 8) !== 0,
       },
-      ...(ice === null ? {} : ice === undefined ? {} : { ice }),
+      ...(compactIce === undefined ? {} : { ice: compactIce }),
       ...(hostName === undefined ? {} : { hostName }),
     }
   }
@@ -172,6 +173,13 @@ export function parseOffer(offerUrl: string, options: ParseOfferOptions = {}): O
   }
 
   if (typeof o.addr !== 'string' || !/^wss?:\/\//.test(o.addr)) throw new TunnelError('bad-offer', 'addr must be a ws(s) URL')
+  try {
+    const address = new URL(o.addr)
+    const localDevelopment = address.protocol === 'ws:' && (address.hostname === 'localhost' || address.hostname === '127.0.0.1' || address.hostname === '[::1]')
+    if (address.username !== '' || address.password !== '' || address.search !== '' || address.hash !== '' || (o.v === 2 && address.protocol !== 'wss:' && !localDevelopment)) throw new Error()
+  } catch {
+    throw new TunnelError('bad-offer', o.v === 2 ? 'official Relay address must be WSS without credentials' : 'addr must be a credential-free WebSocket URL')
+  }
   const base: OfferBase = { addr: o.addr, room: o.room, pubkey: o.pubkey, code: o.code, exp: o.exp, ...(hostName === undefined ? {} : { hostName }) }
   if (o.v === 2) {
     if (o.ice !== undefined) throw new TunnelError('bad-offer', 'ice is only valid on direct or public offers')

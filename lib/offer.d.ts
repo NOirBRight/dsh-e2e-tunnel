@@ -10,7 +10,7 @@ interface OfferBase {
     code: string;
     /** Expiry, unix seconds. */
     exp: number;
-    /** Human-facing Host display name; never identity, endpoint, or Room. */
+    /** Human-facing Host name; presentation metadata, never endpoint or Room identity. */
     hostName?: string;
 }
 /** v2: traffic rides the relay room (NaCl-sealed frames over the room WebSocket). */
@@ -49,7 +49,7 @@ export interface PublicEndpointOffer {
     code: string;
     exp: number;
     capabilities: PublicEndpointCapabilities;
-    /** Human-facing Host display name available immediately after scanning. */
+    /** Human-facing Host name available immediately after scanning. */
     hostName?: string;
     /** STUN-only ICE discovery; Tunnel Fallback is the non-direct path. */
     ice?: string[];

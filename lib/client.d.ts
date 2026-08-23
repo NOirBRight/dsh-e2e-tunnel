@@ -17,7 +17,7 @@ export interface ConnectOptions {
     deviceToken?: string;
     /** Called with the device token when one is issued (first pairing only — store it). */
     onDeviceToken?: (token: string) => void | Promise<void>;
-    /** Called with the Host Display Name from every sealed acknowledgement. */
+    /** Called after every sealed acknowledgement carrying mutable Host presentation metadata. */
     onHostMetadata?: (metadata: {
         displayName: string;
     }) => void | Promise<void>;
@@ -47,7 +47,7 @@ export interface TunnelClient {
     fetch(path: string, init?: {
         method?: string;
         headers?: HeadersInit;
-        body?: string | ArrayBuffer | Uint8Array | Blob | URLSearchParams | null;
+        body?: string | ArrayBuffer | Uint8Array | Blob | URLSearchParams | ReadableStream<Uint8Array> | null;
         signal?: AbortSignal | null;
     }): Promise<Response>;
     /** Open a tunneled WebSocket to a loopback path (e.g. /api/events.mux). */
@@ -56,6 +56,8 @@ export interface TunnelClient {
     probe(timeoutMs?: number): Promise<void>;
     /** The device token this session runs on (permanent until revoked, protocol §5). */
     readonly deviceToken: string | null;
+    /** Negotiated HTTP body cap; Host advertises, client defaults to 8 MiB. */
+    readonly maxHttpBodyBytes: number;
     readonly state: TunnelState;
     close(): void;
     /** Close without emitting onStateChange. Used when this session lost the Automatic race. */
@@ -94,6 +96,7 @@ export declare function openSession(transport: FrameTransport, hostPub: Uint8Arr
 /** Session implementation; socket.ts and http.ts ride its demux maps. */
 export declare class TunnelSession implements TunnelClient {
     readonly deviceToken: string | null;
+    readonly maxHttpBodyBytes: number;
     private currentState;
     private sendSeq;
     private recvSeq;
@@ -105,7 +108,7 @@ export declare class TunnelSession implements TunnelClient {
     private readonly hostPub;
     private readonly ownSec;
     private readonly options;
-    constructor(transport: FrameTransport, hostPub: Uint8Array, ownSec: Uint8Array, deviceToken: string, options: ConnectOptions);
+    constructor(transport: FrameTransport, hostPub: Uint8Array, ownSec: Uint8Array, deviceToken: string, options: ConnectOptions, maxHttpBodyBytes?: number);
     get state(): TunnelState;
     mintId(): string;
     /** Seal and send one session message, assigning the next outgoing seq. */
