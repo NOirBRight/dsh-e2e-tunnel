@@ -9,8 +9,8 @@ export interface ConnectionStatus {
 export interface ConnectionCoordinatorOptions {
     policy: ConnectionPolicy;
     capabilities: RouteCapabilities;
-    connectDirect: () => Promise<TunnelClient>;
-    connectTunnel: () => Promise<TunnelClient>;
+    connectDirect: (signal?: AbortSignal) => Promise<TunnelClient>;
+    connectTunnel: (signal?: AbortSignal) => Promise<TunnelClient>;
     onState?: (status: ConnectionStatus) => void;
     /**
      * Automatic only: Direct may win only if it finishes within this window.
