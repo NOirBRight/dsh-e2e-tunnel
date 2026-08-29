@@ -8,9 +8,9 @@ export interface FrameTransport {
 /** Hard cap on one RTCDataChannel application message (SCTP interop insurance). */
 export declare const MAX_MESSAGE_BYTES: number;
 /**
- * Defensive cap on one reassembled frame. Session plaintext is capped at
- * 200 KiB by the tunnel protocol, so honest frames are far smaller; this
- * bound exists to stop a peer from forcing unbounded reassembly buffers.
+ * Defensive cap on one reassembled sealed frame. Virtual WebSocket payloads
+ * can be multi-megabyte even though client-originated plaintext messages stay
+ * below 200 KiB; this bound prevents unbounded carrier reassembly.
  */
 export declare const MAX_FRAME_BYTES: number;
 /**
@@ -37,6 +37,26 @@ export declare class FrameReassembler {
     push(message: Uint8Array): Uint8Array | null;
     private accept;
 }
+/** Maximum wire message emitted for one fragment, below the Relay's legacy cap. */
+export declare const MAX_RELAY_MESSAGE_BYTES: number;
+/**
+ * Keep legacy-sized Relay frames byte-identical and split only oversized frames.
+ * @param frame whole sealed tunnel frame.
+ * @param frameId sender-side rolling id for fragmented frames.
+ * @returns one raw legacy frame or ordered marked fragments.
+ */
+export declare function fragmentRelayFrame(frame: Uint8Array, frameId: number): Uint8Array[];
+/** Strict reassembler for marked Relay fragments; unmarked legacy frames pass through. */
+export declare class RelayFrameReassembler {
+    private pending;
+    private broken;
+    /**
+     * @param message one Relay WebSocket binary message.
+     * @returns a complete frame, or null while marked fragments remain.
+     */
+    push(message: Uint8Array): Uint8Array | null;
+    private accept;
+}
 /** Shared ordered-delivery core: normalizes payloads through a promise queue so seq order survives async Blob reads. */
 declare abstract class QueuedTransport implements FrameTransport {
     private frameHandler;
@@ -59,8 +79,11 @@ declare abstract class QueuedTransport implements FrameTransport {
 /** Relay-room WebSocket adapter (the M3 wire). Construct once the socket exists; open-wait stays with the caller. */
 export declare class WsFrameTransport extends QueuedTransport {
     private readonly ws;
+    private readonly reassembler;
+    private nextFrameId;
     constructor(ws: WebSocket);
     send(frame: Uint8Array): void;
+    protected process(frame: Uint8Array | string): Uint8Array | string | null;
     close(code?: number, reason?: string): void;
 }
 /**
