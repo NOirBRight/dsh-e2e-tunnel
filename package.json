@@ -1,6 +1,6 @@
 {
   "name": "@dsh-mobile/e2e-tunnel",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "type": "module",
   "description": "NaCl-authenticated DSH tunnel over direct WebRTC DataChannels",
   "license": "MIT",
