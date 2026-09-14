@@ -113,11 +113,18 @@ export async function connect(offerUrl: string, options: ConnectOptions = {}): P
     }
     const hostPub = b64urlDecode(offer.pubkey)
     const maxAttempts = Math.max(1, options.connectRetries ?? 3)
+    // One Client Instance key for the whole call: the host keys its claim
+    // idempotency by that public key, so a retry after a lost or corrupted ack
+    // must arrive as the same claimant — a fresh key reads as a second pairing
+    // attempt and the host answers the final bad-code verdict.
+    const attemptOptions: ConnectOptions = options.clientKeypair === undefined
+      ? { ...options, clientKeypair: generateClientKeypair() }
+      : options
     for (let attempt = 1; ; attempt++) {
       try {
-        if (offer.mode === 'relay') return await attemptConnect(offer, hostPub, options)
-        if (offer.mode === 'direct') return await attemptDirectConnect(offer, hostPub, options)
-        return await attemptPublicEndpoint(offer, hostPub, options)
+        if (offer.mode === 'relay') return await attemptConnect(offer, hostPub, attemptOptions)
+        if (offer.mode === 'direct') return await attemptDirectConnect(offer, hostPub, attemptOptions)
+        return await attemptPublicEndpoint(offer, hostPub, attemptOptions)
       } catch (error) {
         // Roaming reconnects can reach the relay while it still seats the
         // previous client (4409 close before any frame); only transport-level

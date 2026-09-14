@@ -355,6 +355,20 @@ test('deviceToken reconnects indefinitely; unknown tokens and the burned code ar
   await assert.rejects(connect(offer), (e) => e.code === 'bad-code')
 })
 
+test('a retry after a damaged acknowledgement keeps the first claim', async () => {
+  // The admin'd first ack forces the transport-level retry path. The host keys
+  // its claim by the client public key, so a fresh key on the retry reads as a
+  // second pairing attempt and the host answers the final bad-code verdict.
+  const room = newRoom()
+  const host = await startFakeHost(relay.url, room, { corruptAcks: 1 })
+  const offer = makeOffer({ room, pubkey: host.pubkey })
+  const client = await connect(offer)
+  assert.equal(client.state, 'open')
+  const res = await client.fetch('/api/echo', { method: 'POST', body: 'retry-claim' })
+  assert.equal((await res.json()).echo, 'retry-claim')
+  client.close()
+})
+
 test('a paired device reconnects after its original QR offer expires', async () => {
   const { offer } = await hostAndOffer()
   const first = await connect(offer)

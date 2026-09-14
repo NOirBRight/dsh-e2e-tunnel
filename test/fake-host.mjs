@@ -9,7 +9,9 @@ const HOST_CHUNK = 100 * 1024
 /**
  * @param {string} relayUrl ws:// base of the fake relay.
  * @param {string} room room id.
- * @param {{ expectedCode?: string }} opts
+ * @param {{ expectedCode?: string, corruptAcks?: number }} opts `corruptAcks`
+ *   replaces that many acknowledgements with unreadable bytes, standing in for
+ *   a frame lost or damaged in transit.
  * @returns the host handle: pubkey (base64url), seen requests, close().
  */
 export async function startFakeHost(relayUrl, room, opts = {}) {
@@ -18,6 +20,7 @@ export async function startFakeHost(relayUrl, room, opts = {}) {
   const deviceTokens = new Set()
   let tokenCounter = 0
   let pairingClaim = null // { claimant, token }; retries from that key are idempotent
+  let corruptAcks = opts.corruptAcks ?? 0
 
   const ws = new WebSocket(relayUrl + '/r/' + room + '?role=host')
   ws.binaryType = 'arraybuffer'
@@ -68,6 +71,11 @@ export async function startFakeHost(relayUrl, room, opts = {}) {
     const ackNonce = nacl.randomBytes(nacl.box.nonceLength)
     const ackJson = issued !== null ? { ok: true, deviceToken: issued } : { ok: true }
     const ack = nacl.box(utf8Encode(JSON.stringify(ackJson)), ackNonce, clientPub, keys.secretKey)
+    if (corruptAcks > 0) {
+      corruptAcks -= 1
+      ws.send(new Uint8Array(80))
+      return
+    }
     ws.send(concat(ackNonce, ack))
   }
 
